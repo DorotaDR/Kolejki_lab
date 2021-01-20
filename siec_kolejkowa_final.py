@@ -1,6 +1,13 @@
 import numpy as np
 from geneticalgorithm import geneticalgorithm as ga
 
+# import warnings
+#
+#
+# #disable warnings
+# warnings.filterwarnings("ignore")
+
+
 default_lambdas_we = [1.8, 1.2, 1]
 
 default_mi_ir = np.array([[4, 4, 4],
@@ -73,6 +80,12 @@ class AirportNetwork:
         # C2_i - macierz kosztów liczby niezajętych kanałów
         self.C2_i = [0.1, 0.4, 0.1, 0.9, 0.6, 0.4, 0.5]
 
+        self.ro_ir = None
+        self.K_ir = None
+        self.Q_ir = None
+        self.m_nzi = None
+
+
     @staticmethod
     def _calculate_lambdas_ir(p_table, lambda_we):
         """
@@ -101,17 +114,21 @@ class AirportNetwork:
         :param ro_ir: względna intensywność obsługi r-tej klasy w i-tym systemie, type: np.array
         :return: wartość Q_ir dla danego systemu i klasy
         """
-        x = ro_ir[i][r] / (1 - ro_i)
-        y = (m_i[i] * ro_i) ** m_i[i] / (np.math.factorial(m_i[i]) * (1 - ro_i))
 
-        temp_list = []
-        for ki in range(m_i[i] - 1):
-            if ki > 0:
-                temp_list.append((m_i[i] * ro_i) ** ki / np.math.factorial(ki))
+        if np.isnan(ro_ir[i][r]):
+            return 0
+        else:
+            x = ro_ir[i][r] / (1 - ro_i)
+            y = (m_i[i] * ro_i) ** m_i[i] / (np.math.factorial(m_i[i]) * (1 - ro_i))
 
-        z = 1 / (sum(temp_list) + (m_i[i] * ro_i) ** m_i[i] / np.math.factorial(m_i[i]) * (1 / (1 - ro_i)))
+            temp_list = []
+            for ki in range(m_i[i] - 1):
+                if ki > 0:
+                    temp_list.append((m_i[i] * ro_i) ** ki / np.math.factorial(ki))
 
-        return x * z * y
+            z = 1 / (sum(temp_list) + (m_i[i] * ro_i) ** m_i[i] / np.math.factorial(m_i[i]) * (1 / (1 - ro_i)))
+
+            return x * z * y
 
     def f_cost_full(self, m_i):
         """
@@ -125,12 +142,12 @@ class AirportNetwork:
         lambdas_ir_list = []
         p_tables_r = [self.p_shortdist, self.p_longdist, self.p_transport]
         for p_table, lambda_we in zip(p_tables_r, self.lambda_we_r):
-            print("---------------")
-            print("lambda = ", lambda_we)
+            # print("---------------")
+            # print("lambda = ", lambda_we)
             lambdas_ir = self._calculate_lambdas_ir(p_table, lambda_we)
 
-            print("Przepustowość tej klasy lambda_ir = ", lambdas_ir)
-            print("\n")
+            # print("Przepustowość tej klasy lambda_ir = ", lambdas_ir)
+            # print("\n")
 
             lambdas_ir_list.append(lambdas_ir)
 
@@ -154,8 +171,10 @@ class AirportNetwork:
                     elif i >= 4 and i < 6:
                         lambdas_ir_arr[i + 1][r] = lambdas_i[i]
 
-        print("lambdas_ir_arr")
-        print(lambdas_ir_arr)
+        self.lambdas_ir_arr = lambdas_ir_arr
+        # print("lambdas_ir_arr")
+        # print(lambdas_ir_arr)
+
 
         # ro_iR
         ro_ir = np.zeros([7, 3])
@@ -163,22 +182,28 @@ class AirportNetwork:
             for r in range(3):
                 ro_ir[i][r] = lambdas_ir_arr[i][r] / (m_i[i] * self.mi_ir[i][r])
 
-        print("ro_ir:")
-        print(ro_ir)
+        self.ro_ir = ro_ir
+
+        for i in range(7):
+            ro_i = np.nan_to_num(ro_ir)[i].sum()
+            if ro_i >= 1:
+                print("Warunek ro_i < 1 nie spełniony")
+                return 1000
+
+        # print("ro_ir:")
+        # print(ro_ir)
 
         # liczba niezajetych kanałow
         m_nzi = []
         # sprawdzenie war. ergodyczności
         for i in range(7):
             ro_i = np.nan_to_num(ro_ir)[i].sum()
-            if ro_i > 1:
-                print("Warunek ro_i < 1 nie spełniony")
-                return 1000
-            else:
-                m_nzi.append(m_i[i] - m_i[i] * ro_i)
+            m_nzi.append(m_i[i] - m_i[i] * ro_i)
 
-        print("m_nzi:")
-        print(m_nzi)
+        # print("m_nzi:")
+        # print(m_nzi)
+
+        self.m_nzi = m_nzi
 
         # Q_ir
 
@@ -189,6 +214,16 @@ class AirportNetwork:
             for r in range(3):
                 Q_ir[i][r] = self._single_Q_ir(i, r, m_i, ro_i, ro_ir)
 
+        self.Q_ir = Q_ir
+
+        K_ir = np.zeros((7, 3))
+
+        for i in range(7):
+            for r in range(3):
+                K_ir[i][r] = m_i[i] * ro_ir[i][r] + Q_ir[i][r]
+
+        self.K_ir = K_ir
+
         # sumowanie kosztów
         costs = np.zeros((len(m_nzi), r))
         for i in range(len(m_nzi)):
@@ -196,6 +231,31 @@ class AirportNetwork:
                 costs[i][j] = self.C1_ij[i][j] * Q_ir[i][j] + self.C2_i[i] * m_nzi[i]
 
         return sum(sum(np.nan_to_num(costs)))
+
+    def print_results(self, mis):
+        cost_val = self.f_cost_full(mis)
+
+        print(f"Rozwiązanie {mis}")
+
+        print(f"Koszt: {cost_val}")
+
+        print("\nprzepustowość r-tej klasy w i-tym systemie")
+        print(self.lambdas_ir_arr)
+
+        print("\n względna intensywność obsługi r-tej klasy w i-tym systemie")
+        print(self.ro_ir)
+
+        print("\n średnia liczba zgłoszeń r-tej klasy w i-tym systemie")
+        print(self.Q_ir)
+
+        print("\n średnia liczba zgłoszeń r-tej klasy w i-tym systemie")
+        print(self.K_ir)
+
+        print("\n liczba niezajętych kanałów w systemie i-tym")
+        print(self.m_nzi)
+
+
+
 
 
 siec = AirportNetwork()
@@ -207,10 +267,12 @@ siec = AirportNetwork()
 #        3,  # 4 pasazerowie
 #        2,  # 5 towary
 #        3]  # 6 pasy wylotu
-sample_m_i = [1., 4., 1., 1, 2., 2., 1.]
+sample_m_i = [1, 5., 3, 2., 4., 1., 2.]
 
 res = siec.f_cost_full(sample_m_i)
 print(f"\n\n Result for m_i = {sample_m_i}: \n", res)
+siec.print_results(sample_m_i)
+
 
 ograniczenia = np.array([[1, 2],  # 0 pasy ladowania
                          [1, 5],  # 1 przeglad
@@ -231,4 +293,19 @@ ga_model = ga(function=siec.f_cost_full, dimension=7, variable_type='int',
                                     'max_iteration_without_improv': None})
 
 for it in range(5):
+
+
     ga_model.run()
+
+    print("\n --------------------------")
+    myList = ga_model.report
+    minIndex = myList.index(min(myList))
+    print(f"Rozwiązanie znalezione w {minIndex} iteracji")
+
+    mi_opt = ga_model.best_variable
+
+    siec.print_results(mi_opt)
+
+
+    print("Kontynuować? ")
+    input()
