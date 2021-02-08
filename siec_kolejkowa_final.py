@@ -187,7 +187,7 @@ class AirportNetwork:
         for i in range(7):
             ro_i = np.nan_to_num(ro_ir)[i].sum()
             if ro_i >= 1:
-                print("Warunek ro_i < 1 nie spełniony")
+                # print("Warunek ro_i < 1 nie spełniony")
                 return 1000
 
         # print("ro_ir:")
@@ -245,10 +245,10 @@ class AirportNetwork:
         print("\n względna intensywność obsługi r-tej klasy w i-tym systemie")
         print(self.ro_ir)
 
-        print("\n średnia liczba zgłoszeń r-tej klasy w i-tym systemie")
+        print("\n Q_ir średnia liczba zgłoszeń r-tej klasy w kolejce i-tego systemu")
         print(self.Q_ir)
 
-        print("\n średnia liczba zgłoszeń r-tej klasy w i-tym systemie")
+        print("\n K_ir średnia liczba zgłoszeń r-tej klasy w i-tym systemie")
         print(self.K_ir)
 
         print("\n liczba niezajętych kanałów w systemie i-tym")
